@@ -163,12 +163,11 @@ def handle_excess_file(is_error:bool,mode:str,in_name,temp_name,out_name):
         if os.path.exists(temp_name):
             os.remove(temp_name)
 
-def anti_confuse(mode,in_file,out_dir = None) -> bool:
-    in_name = in_file
+def anti_confuse(mode, in_name, pycdc_path, out_dir = None) -> bool:
     if out_dir is None:
-        out_dir = os.path.dirname(in_file)
-    temp_name = os.path.join(out_dir,os.path.splitext(os.path.basename(in_file))[0] + '.pyc')
-    out_name = os.path.join(out_dir,os.path.splitext(os.path.basename(in_file))[0] + '.py')
+        out_dir = os.path.dirname(in_name)
+    temp_name = os.path.join(out_dir,os.path.splitext(os.path.basename(in_name))[0] + '.pyc')
+    out_name = os.path.join(out_dir,os.path.splitext(os.path.basename(in_name))[0] + '.py')
 
     with open(in_name, 'rb') as f:
         data = f.read()
@@ -186,16 +185,11 @@ def anti_confuse(mode,in_file,out_dir = None) -> bool:
     with open(temp_name, 'wb') as temp_f:
         temp_f.write(restored_data)
 
-    #尝试反混淆MCS
-    result = subprocess.run([r"./tools/pycdc/pycdc.exe",temp_name,],capture_output=True,text=True)
-    if result.returncode != 0:
-
-        if result.stdout is not None:
-            print("\033[33m[!] 发现警告：" + result.stderr + "\033[0m")
-        else:
-            print("\033[31m[!] 发现错误：" + result.stderr + "\033[0m")
-            handle_excess_file(True,mode,in_name,temp_name,out_name)
-            return False
+    result = subprocess.run(
+        [pycdc_path, temp_name],
+        capture_output=True,
+        text=True,
+    )
 
     with open(out_name, 'w') as out_f:
         out_f.write(result.stdout)
@@ -228,7 +222,7 @@ if __name__ == '__main__':
         os.makedirs(out_dir)
 
     print("[*] 选项(默认为4)：解包至py并删除多余文件(1)\n解包至py并保留pyc(2)\n解包至py并保留pyc和mcs(3)\n解包至py并保留mcs(4)")
-    unpack_mode = input('[*] 选项(1/2/3)：')
+    unpack_mode = input('[*] 选项(1/2/3/4)：')
     if unpack_mode not in ['1','2','3','4']:
         if unpack_mode == '':
             unpack_mode = '4'
@@ -237,7 +231,7 @@ if __name__ == '__main__':
             os.system("pause")
             exit(2)
 
-    if anti_confuse(unpack_mode,in_name,out_dir):
+    if anti_confuse(unpack_mode, in_name, out_dir):
         print("[*] 解包成功")
         os.system("pause")
         exit(0)
