@@ -15,3 +15,6 @@
 ## 快速开始
 - 如果要解包mcpk(后缀为.mcp)，请用Python3运行mcpk_unpacker，通常情况下这是首要的选项;
 - 如果要反混淆mcs(后缀为.mcs)，请用Python3运行mcs_anti_confuser.
+
+## 重要提醒
+- 如果你使用Python3运行没有解包成功或出现闪退等情况，请尝试换用Python 3.13及以上版本
