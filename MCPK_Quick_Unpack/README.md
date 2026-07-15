@@ -10,8 +10,10 @@
 
 -  对所有输入输出都进行了汉化;
 -  无需解包后对mcs一个一个地进行反混淆，可以一键解包到py;
+-  多线程支持，解包Vanilla.mcp只需要不到30s;
+-  使用Pycdc进行解包，效果更好
 -  更完善的错误提示等.
 
 ## 快速开始
-- 如果要解包mcpk(后缀为.mcp)，请用Python3运行mcpk_unpacker，通常情况下这是首要的选项;
+- 如果要解包mcpk(后缀为.mcp)，请用Python3运行mcpk_unpacker，通常情况下这是首选项;
 - 如果要反混淆mcs(后缀为.mcs)，请用Python3运行mcs_anti_confuser.
