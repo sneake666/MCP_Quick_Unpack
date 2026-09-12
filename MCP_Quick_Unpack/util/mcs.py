@@ -1,6 +1,6 @@
 import os
 
-from tools.crypto import decrypt_data, encrypt_data
+from util.crypto import decrypt_data, encrypt_data
 
 def decrypt_file(filepath, output_path=None):
     if not os.path.exists(filepath):

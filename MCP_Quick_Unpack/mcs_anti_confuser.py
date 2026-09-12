@@ -4,8 +4,8 @@ import subprocess
 
 from typing import Any
 from io import TextIOBase
-from tools.mcs_marshal import McsMarshal
-from tools.opcode_map import get_mcs2std_op_map
+from util.mcs_marshal import McsMarshal
+from util.opcode_map import get_mcs2std_op_map
 
 class FakeFileObject(TextIOBase):
     def __init__(self):
@@ -135,7 +135,7 @@ def w_object(obj: Any, f: TextIOBase) -> None:
         f.write(b'N')
 
 def restore_data(data: bytes) -> bytes:
-    from tools.crypto import decrypt_data
+    from util.crypto import decrypt_data
     
     decrypted_data = decrypt_data(data)
     # For debugging: save decrypted data to file

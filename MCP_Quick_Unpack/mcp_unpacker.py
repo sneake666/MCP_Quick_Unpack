@@ -1,13 +1,15 @@
 # -*- coding: UTF-8 -*-
 import datetime
-import struct
-import time
-import zlib
 import json
 import os
-from typing import Union, Tuple
-from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, Future
+import struct
 import threading
+import time
+import zlib
+from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
+from typing import Union, Tuple
+
+from MCP_Quick_Unpack.util.crypto import decrypt_data
 
 MAGIC1, MAGIC2 = 0x267B0B11, 0xBDEB77DE
 MAGIC3, MAGIC4, MAGIC5 = 0x02040801, 0x7D7EBBDE, 0x00804021
@@ -159,9 +161,9 @@ def _extract_file_with_decrypt_worker(file_path, output_dir, file_info, pycdc_pa
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
             with open(out_path, 'wb') as out_f:
                 out_f.write(u_data)
-            return (out_path, True, "", name)
+            return out_path, True, "", name
         else:
-            from tools.mcs import decrypt_data
+            from util.mcs import decrypt_data
             from mcs_anti_confuser import McsMarshal
 
             d_data = decrypt_data(c_data)
@@ -175,7 +177,7 @@ def _extract_file_with_decrypt_worker(file_path, output_dir, file_info, pycdc_pa
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
                 with open(out_path, 'wb') as out_f:
                     out_f.write(c_data)
-                return (out_path, True, "", name)
+                return out_path, True, "", name
             else:
                 file_name = file_name.replace('.py', '.mcs')
                 name = file_name
@@ -183,7 +185,7 @@ def _extract_file_with_decrypt_worker(file_path, output_dir, file_info, pycdc_pa
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
                 with open(out_path, 'wb') as out_f:
                     out_f.write(c_data)
-                return (out_path, True, "", name)
+                return out_path, True, "", name
     except Exception as e:
         try:
             name = file_info['name']
@@ -196,30 +198,26 @@ def _extract_file_with_decrypt_worker(file_path, output_dir, file_info, pycdc_pa
                     pass
             return (out_path, False, str(e), name)
         except:
-            return ("", False, str(e), file_info.get('name', 'unknown'))
+            return "", False, str(e), file_info.get('name', 'unknown')
 
 
-def _anti_confuse_worker(args: Tuple) -> Tuple[str, bool]:
-    unpack_mode, file_path, pycdc_path = args
+def _anti_confuse_worker(unpack_mode: str, file_path: str, pycdc_path: str) -> Tuple[str, bool]:
     from mcs_anti_confuser import anti_confuse
-    ok = anti_confuse(unpack_mode, file_path, pycdc_path=pycdc_path)
-    return (file_path, ok)
+    result = anti_confuse(unpack_mode, file_path, pycdc_path=pycdc_path)
+    return file_path, result
 
 
 def unpack_mcpk(unpack_mode: str, file_path: str, output_dir: str, max_workers: int = None) -> dict:
+    cpu_count = os.cpu_count() or 4
     if max_workers is None:
-        max_workers = min(32, (os.cpu_count() or 1) + 4)
+        max_workers = min(32, cpu_count - 1)
+    process_workers = max(1, min(max_workers, cpu_count - 1))
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    pycdc_path = os.path.join(script_dir, "tool", "pycdc", "pycdc.exe")
+    pycdc_path = os.path.join(script_dir, "util", "pycdc", "pycdc.exe")
+
     if not os.path.exists(pycdc_path):
-        pycdc_path = os.path.join(script_dir, "..", "tool", "pycdc", "pycdc.exe")
-    if not os.path.exists(pycdc_path):
-        pycdc_path = r".tool\pycdc\pycdc.exe"
-    if not os.path.exists(pycdc_path):
-        pycdc_path = r"..\tool\pycdc\pycdc.exe"
-    if not os.path.exists(pycdc_path):
-        pycdc_path = "pycdc.exe"
+        print("[!] 未找到pycdc.exe，反混淆任务可能全部失败")
 
     success_count = 0
     error_count = 0
@@ -305,7 +303,6 @@ def unpack_mcpk(unpack_mode: str, file_path: str, output_dir: str, max_workers: 
                 return {"is_success": False}
 
         if dir_map[0]["files"].get(redirect_mcs_hash):
-            from tools.mcs import decrypt_data
             from mcs_anti_confuser import McsMarshal
 
             f.seek(data_base_offset + dir_map[0]["files"][redirect_mcs_hash]["offset"])
@@ -367,7 +364,7 @@ def unpack_mcpk(unpack_mode: str, file_path: str, output_dir: str, max_workers: 
                 ))
 
             if extract_tasks:
-                print(f"[*] 开始多线程提取 {len(extract_tasks)} 个文件（最多 {max_workers} 线程）...")
+                print(f"[*] 开始提取 {len(extract_tasks)} 个文件...")
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     futures = {
                         executor.submit(_extract_file_worker, *task): task[2] for task in extract_tasks
@@ -415,8 +412,8 @@ def unpack_mcpk(unpack_mode: str, file_path: str, output_dir: str, max_workers: 
                     ))
 
             if extract_tasks:
-                print(f"[*] 开始多线程提取并解密 {len(extract_tasks)} 个文件（最多 {max_workers} 线程）...")
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                print(f"[*] 开始多线程提取并反混淆 {len(extract_tasks)} 个文件...")
+                with ProcessPoolExecutor(max_workers=process_workers) as executor:
                     futures = {
                         executor.submit(_extract_file_with_decrypt_worker, *task): task[2] for task in extract_tasks
                     }
@@ -442,13 +439,13 @@ def unpack_mcpk(unpack_mode: str, file_path: str, output_dir: str, max_workers: 
                                 print(f"\033[31m[!] 提取任务异常: {e}\033[0m")
 
     if to_anti_confuse:
-        print(f"\n[*] 开始多进程反混淆 {len(to_anti_confuse)} 个文件（最多 {max_workers} 进程）...")
+        print(f"\n[*] 开始反混淆 {len(to_anti_confuse)} 个文件...")
 
         anti_tasks = [(unpack_mode, path, pycdc_path) for path in to_anti_confuse]
 
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        with ProcessPoolExecutor(max_workers=process_workers) as executor:
             futures = {
-                executor.submit(_anti_confuse_worker, task): task[1] for task in anti_tasks
+                executor.submit(_anti_confuse_worker, *task): task[1] for task in anti_tasks
             }
             for future in as_completed(futures):
                 path = futures[future]
@@ -474,19 +471,21 @@ def unpack_mcpk(unpack_mode: str, file_path: str, output_dir: str, max_workers: 
 
 
 if __name__ == "__main__":
-    print("[*] 一键解包MCPK (多线程/多进程加速版)")
-    print("[*] 由vanilla_mcp_util提供支持(github:https://github.com/Conla-AC/vanilla_mcp_util)")
-    print("[*] 建议您不要大规模传播本脚本，否则可能导致网易更改加密使本脚本失效")
+    print("[*] 一键解包MCP")
+    print("[+] v1.2 更新：增加多线程优化，解包速度起飞")
+    print("[*] 基于vanilla_mcp_util编写(https://github.com/Conla-AC/vanilla_mcp_util，原项目已删库，此为分支)")
 
-    mcpk_path = input("[*] MCPK输入路径(必填): ").strip('\"\'')
+    mcpk_path = input("[*] MCP输入路径(必填): ").strip('\"\'')
     if mcpk_path is None or mcpk_path.strip() == "":
         print("[!] 输入目录为空，程序退出")
         exit(1)
     elif not os.path.isfile(mcpk_path):
-        print(f"[!] {mcpk_path} 不存在或者是一个文件夹，它应当是一个文件，程序退出")
+        print(f"[!] {mcpk_path} 不存在或者是一个文件夹，它应当是一个具体的文件，程序退出")
         exit(1)
 
-    output_directory = input("[*] 输出目录（不填默认在输入目录创建新文件夹）: ").strip('\"\'')
+    print("[*] Tips：选中文件后按ctrl+shift+c即可快捷复制文件路径")
+    print("[*] 不填输出目录则自动在输入目录创建新文件夹，命名为\"xxx_unpacked_\"+时间戳")
+    output_directory = input("[*] 输出目录: ").strip('\"\'')
 
     print(
         "[*] 选项(默认为1)：\n解包至py并删除多余文件(1)\n解包至py并保留pyc(2)\n解包至py并保留pyc和mcs(3)\n解包至py并保留mcs(4)")
@@ -511,13 +510,11 @@ if __name__ == "__main__":
     if result["is_success"]:
         print(f"[*] {result['success_count']}个文件解包成功，{result['error_count']}个文件解包失败，用时：{time.time()-start_time:.2f}s")
         print(f"[*] 解包完成，输出目录：" + output_directory)
-        print("[*] 再次提醒：建议您不要大规模传播本脚本，否则可能导致网易更改加密使本脚本失效")
         print("[*] 按任意键退出")
         os.system("pause")
         exit(0)
     else:
         print("[*] 解包失败")
-        print("[*] 再次提醒：建议您不要大规模传播本脚本，否则可能导致网易更改加密使本脚本失效")
         print("[*] 按任意键退出")
         os.system("pause")
         exit(1)
